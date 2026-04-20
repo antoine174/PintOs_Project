@@ -336,6 +336,7 @@ void
 thread_set_priority (int new_priority) 
 {
   thread_current ()->priority = new_priority;
+  thread_yield();
 }
 
 /* Returns the current thread's priority. */
@@ -482,6 +483,14 @@ alloc_frame (struct thread *t, size_t size)
   return t->stack;
 }
 
+
+// antonyos was here
+struct list_less_func *lesss(struct list_elem *a,struct list_elem *b, void *aux){
+   struct thread *t1=list_entry(a,struct thread ,elem);
+  struct thread *t2=list_entry(b,struct thread ,elem);;
+  return t1->priority<t2->priority;
+}
+
 /* Chooses and returns the next thread to be scheduled.  Should
    return a thread from the run queue, unless the run queue is
    empty.  (If the running thread can continue running, then it
@@ -492,8 +501,16 @@ next_thread_to_run (void)
 {
   if (list_empty (&ready_list))
     return idle_thread;
-  else
-    return list_entry (list_pop_front (&ready_list), struct thread, elem);
+
+  else{
+    struct list_elem *next=list_max(&ready_list, &lesss,NULL);
+    list_remove(next);
+    struct thread* next_thread=list_entry(next,struct thread ,elem);;
+    
+    // printf("best max found %d",next_thread->priority);
+    return next_thread;
+  }
+  //return list_entry (list_pop_front (&ready_list), struct thread, elem);
 }
 
 /* Completes a thread switch by activating the new thread's page
