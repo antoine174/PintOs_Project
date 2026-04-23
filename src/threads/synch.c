@@ -114,22 +114,30 @@ void
 sema_up (struct semaphore *sema) 
 {
   enum intr_level old_level;
+  struct thread *highest = NULL; /* 1. Add this tracking variable */
 
   ASSERT (sema != NULL);
 
   old_level = intr_disable ();
-  if (!list_empty (&sema->waiters)) {
-    // thread_unblock (list_entry (list_pop_front (&sema->waiters),
-    //                             struct thread, elem));
-    struct list_elem *element = list_max(&sema->waiters, &lesss2, NULL);
-    list_remove(element);
-    struct thread *highest = list_entry(element,struct thread,elem);
-    thread_unblock (highest);
-  }
-  
-  
-    sema->value++;
+  if (!list_empty (&sema->waiters)) 
+    {
+      struct list_elem *element = list_max(&sema->waiters, &lesss2, NULL);
+      list_remove(element);
+      highest = list_entry(element, struct thread, elem);
+      thread_unblock (highest);
+    }
+  sema->value++;
   intr_set_level (old_level);
+
+  /* --- 2. NEW PREEMPTION CHECK --- */
+  if (highest != NULL && thread_current()->priority < highest->priority) 
+    {
+      /* Only yield if we are not inside an interrupt handler */
+      if (!intr_context()) 
+        {
+          thread_yield();
+        }
+    }
 }
 
 static void sema_test_helper (void *sema_);
@@ -207,7 +215,6 @@ lock_acquire (struct lock *lock){
   ASSERT (!intr_context ());
   ASSERT (!lock_held_by_current_thread (lock));
 
-  /* --- NEW DONATION CHAIN LOGIC START --- */
   if (lock->holder != NULL) 
     {
       thread_current()->waiting_lock = lock;
