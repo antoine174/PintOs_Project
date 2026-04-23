@@ -190,15 +190,45 @@ lock_init (struct lock *lock)
    interrupts disabled, but interrupts will be turned back on if
    we need to sleep. */
 void
-lock_acquire (struct lock *lock)
-{
+lock_acquire (struct lock *lock){  
   ASSERT (lock != NULL);
   ASSERT (!intr_context ());
   ASSERT (!lock_held_by_current_thread (lock));
 
+  if (lock->holder!=NULL){
+   if(lock->priority < thread_current()-> priority){
+    lock->priority = thread_current()-> priority;
+   }
+
+   if(lock->holder -> priority < thread_current()-> priority){
+    lock->holder -> priority = thread_current()-> priority;
+   }
+  }
+  
+
   sema_down (&lock->semaphore);
+  list_push_back(&thread_current()->locks,&lock->elem);
   lock->holder = thread_current ();
+  
+  if(thread_current()->priority < lock->priority){
+    thread_current()->priority = lock->priority;
+  }
+   if(lock->holder -> priority < thread_current()-> priority){
+    lock->holder -> priority = thread_current()-> priority;
+   }
+
 }
+
+// void
+// lock_acquire (struct lock *lock)
+// {
+//   ASSERT (lock != NULL);
+//   ASSERT (!intr_context ());
+//   ASSERT (!lock_held_by_current_thread (lock));
+
+//   sema_down (&lock->semaphore);
+//   lock->holder = thread_current ();
+// }
 
 /* Tries to acquires LOCK and returns true if successful or false
    on failure.  The lock must not already be held by the current
@@ -225,11 +255,31 @@ lock_try_acquire (struct lock *lock)
    An interrupt handler cannot acquire a lock, so it does not
    make sense to try to release a lock within an interrupt
    handler. */
+
+   struct list_less_func *less_locks(struct list_elem *a,struct list_elem *b, void *aux){
+   struct lock *t1=list_entry(a,struct lock ,elem);
+  struct lock *t2=list_entry(b,struct lock ,elem);;
+  return t1->priority<t2->priority;
+}
 void
 lock_release (struct lock *lock) 
 {
   ASSERT (lock != NULL);
   ASSERT (lock_held_by_current_thread (lock));
+
+
+  list_remove(&lock->elem);
+  lock->priority=0;
+  
+
+  thread_current()->priority=thread_current()->initial_priority;
+
+  struct list_elem *e =list_max(&thread_current()->locks,&less_locks,NULL);
+  struct lock *max_lock=list_entry(e,struct lock,elem);
+  if(thread_current()->priority< max_lock->priority){
+    thread_current()->priority =  max_lock->priority;
+  }
+
 
   lock->holder = NULL;
   sema_up (&lock->semaphore);
