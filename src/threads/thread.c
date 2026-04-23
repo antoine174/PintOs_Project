@@ -11,6 +11,8 @@
 #include "threads/switch.h"
 #include "threads/synch.h"
 #include "threads/vaddr.h"
+#include "threads/fixed-point.h"
+#include "devices/timer.h"
 #ifdef USERPROG
 #include "userprog/process.h"
 #endif
@@ -54,6 +56,8 @@ static long long user_ticks;    /* # of timer ticks in user programs. */
 #define TIME_SLICE 4            /* # of timer ticks to give each thread. */
 static unsigned thread_ticks;   /* # of timer ticks since last yield. */
 
+static fixed_pt load_avg;       /* System load average in fixed-point. */
+
 /* If false (default), use round-robin scheduler.
    If true, use multi-level feedback queue scheduler.
    Controlled by kernel command-line option "-o mlfqs". */
@@ -92,6 +96,9 @@ thread_init (void)
   lock_init (&tid_lock);
   list_init (&ready_list);
   list_init (&all_list);
+
+  /* Initialize MLFQS state. */
+  load_avg = 0;
 
   /* Set up a thread structure for the running thread. */
   initial_thread = running_thread ();
@@ -349,31 +356,33 @@ thread_get_priority (void)
 void
 thread_set_nice (int nice UNUSED) 
 {
-  /* Not yet implemented. */
+  struct thread *t = thread_current ();
+  /*Restrict nice to [-20, 20]. */
+  if (nice < -20) nice = -20;
+  if (nice > 20) nice = 20;
+  
+  t->nice = nice;
 }
 
 /* Returns the current thread's nice value. */
 int
 thread_get_nice (void) 
 {
-  /* Not yet implemented. */
-  return 0;
+  return thread_current ()->nice;
 }
 
 /* Returns 100 times the system load average. */
 int
 thread_get_load_avg (void) 
 {
-  /* Not yet implemented. */
-  return 0;
+  return convert_to_int_nearest(mul_fixed_int (load_avg, 100));
 }
 
 /* Returns 100 times the current thread's recent_cpu value. */
 int
 thread_get_recent_cpu (void) 
 {
-  /* Not yet implemented. */
-  return 0;
+  return convert_to_int_nearest(mul_fixed_int (thread_current ()->recent_cpu, 100));
 }
 
 /* Idle thread.  Executes when no other thread is ready to run.
@@ -462,6 +471,8 @@ init_thread (struct thread *t, const char *name, int priority)
   strlcpy (t->name, name, sizeof t->name);
   t->stack = (uint8_t *) t + PGSIZE;
   t->priority = priority;
+  t->nice = 0;                          // initialize nice to 0
+  t->recent_cpu = 0;                    // initialize recent_cpu to 0
   t->magic = THREAD_MAGIC;
 
   old_level = intr_disable ();
