@@ -338,11 +338,25 @@ thread_foreach (thread_action_func *func, void *aux)
 }
 
 /* Sets the current thread's priority to NEW_PRIORITY. */
+struct list_less_func *less_locks2(struct list_elem *a,struct list_elem *b, void *aux){
+   struct lock *t1=list_entry(a,struct lock ,elem);
+  struct lock *t2=list_entry(b,struct lock ,elem);;
+  return t1->priority<t2->priority;
+}
 void
 thread_set_priority (int new_priority) 
 {
+    thread_current ()->priority = new_priority;
+  
+  if (!list_empty(&thread_current()->locks)) {
+    struct list_elem *e = list_max(&thread_current()->locks, &less_locks2, NULL);
+    struct lock *max_lock = list_entry(e, struct lock, elem);
+    
+    if(thread_current()->priority < max_lock->priority){
+      thread_current()->priority = max_lock->priority;
+    }
+  }
   thread_current ()->initial_priority = new_priority;
-  // thread_current ()->priority = new_priority;
   thread_yield();
 }
 
