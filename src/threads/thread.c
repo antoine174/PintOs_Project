@@ -197,10 +197,16 @@ thread_create (const char *name, int priority,
   sf = alloc_frame (t, sizeof *sf);
   sf->eip = switch_entry;
   sf->ebp = 0;
+ 
 
   /* Add to run queue. */
   thread_unblock (t);
-
+  
+ //3l4an lw hwa a3le y4t8l 3ltol
+  if (priority > thread_current()->priority) 
+    {
+      thread_yield();
+    }
   return tid;
 }
 
@@ -464,6 +470,7 @@ init_thread (struct thread *t, const char *name, int priority)
   t->stack = (uint8_t *) t + PGSIZE;
   t->priority = priority;
   list_init (&t->locks);
+  t->waiting_lock=NULL;
   t->initial_priority = priority;//zodna dy 
   t->magic = THREAD_MAGIC;
 

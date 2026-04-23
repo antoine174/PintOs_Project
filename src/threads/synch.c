@@ -105,6 +105,11 @@ sema_try_down (struct semaphore *sema)
    and wakes up one thread of those waiting for SEMA, if any.
 
    This function may be called from an interrupt handler. */
+   struct list_less_func *lesss2(struct list_elem *a,struct list_elem *b, void *aux){
+   struct thread *t1=list_entry(a,struct thread ,elem);
+  struct thread *t2=list_entry(b,struct thread ,elem);;
+  return t1->priority<t2->priority;
+}
 void
 sema_up (struct semaphore *sema) 
 {
@@ -113,10 +118,17 @@ sema_up (struct semaphore *sema)
   ASSERT (sema != NULL);
 
   old_level = intr_disable ();
-  if (!list_empty (&sema->waiters)) 
-    thread_unblock (list_entry (list_pop_front (&sema->waiters),
-                                struct thread, elem));
-  sema->value++;
+  if (!list_empty (&sema->waiters)) {
+    // thread_unblock (list_entry (list_pop_front (&sema->waiters),
+    //                             struct thread, elem));
+    struct list_elem *element = list_max(&sema->waiters, &lesss2, NULL);
+    list_remove(element);
+    struct thread *highest = list_entry(element,struct thread,elem);
+    thread_unblock (highest);
+  }
+  
+  
+    sema->value++;
   intr_set_level (old_level);
 }
 
@@ -195,17 +207,32 @@ lock_acquire (struct lock *lock){
   ASSERT (!intr_context ());
   ASSERT (!lock_held_by_current_thread (lock));
 
-  if (lock->holder!=NULL){
-   if(lock->priority < thread_current()-> priority){
-    lock->priority = thread_current()-> priority;
-   }
+  /* --- NEW DONATION CHAIN LOGIC START --- */
+  if (lock->holder != NULL) 
+    {
+      thread_current()->waiting_lock = lock;
 
-   if(lock->holder -> priority < thread_current()-> priority){
-    lock->holder -> priority = thread_current()-> priority;
-   }
-  }
+      struct lock *chain_lock = lock;
+      int depth = 10; 
+
+      while (chain_lock != NULL && chain_lock->holder != NULL && --depth)
+        {
+          struct thread *holder = chain_lock->holder;
+
+          if (chain_lock->priority < thread_current()->priority) 
+            {
+              chain_lock->priority = thread_current()->priority;
+            }
+
+          if (holder->priority < thread_current()->priority) 
+            {
+              holder->priority = thread_current()->priority;
+            }
+
+          chain_lock = holder->waiting_lock;
+        }
+    }
   
-
   sema_down (&lock->semaphore);
   list_push_back(&thread_current()->locks,&lock->elem);
   lock->holder = thread_current ();
@@ -270,19 +297,23 @@ lock_release (struct lock *lock)
 
   list_remove(&lock->elem);
   lock->priority=0;
-  
+
 
   thread_current()->priority=thread_current()->initial_priority;
 
-  struct list_elem *e =list_max(&thread_current()->locks,&less_locks,NULL);
-  struct lock *max_lock=list_entry(e,struct lock,elem);
-  if(thread_current()->priority< max_lock->priority){
-    thread_current()->priority =  max_lock->priority;
+ if (!list_empty(&thread_current()->locks)) {
+    struct list_elem *e = list_max(&thread_current()->locks, &less_locks, NULL);
+    struct lock *max_lock = list_entry(e, struct lock, elem);
+    
+    if(thread_current()->priority < max_lock->priority){
+      thread_current()->priority = max_lock->priority;
+    }
   }
 
 
   lock->holder = NULL;
   sema_up (&lock->semaphore);
+  thread_yield();
 }
 
 /* Returns true if the current thread holds LOCK, false
