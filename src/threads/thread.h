@@ -98,6 +98,7 @@ struct thread
     struct list locks;
     int initial_priority;
     struct lock *waiting_lock; 
+    int64_t wake_time;
 
 #ifdef USERPROG
     /* Owned by userprog/process.c. */

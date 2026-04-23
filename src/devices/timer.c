@@ -8,6 +8,8 @@
 #include "threads/synch.h"
 #include "threads/thread.h"
 #include "threads/fixed-point.h"
+
+static struct list sleep_list;
   
 /* See [8254] for hardware details of the 8254 timer chip. */
 
@@ -36,6 +38,7 @@ static void real_time_delay (int64_t num, int32_t denom);
 void
 timer_init (void) 
 {
+  list_init (&sleep_list);
   pit_configure_channel (0, 2, TIMER_FREQ);
   intr_register_ext (0x20, timer_interrupt, "8254 Timer");
 }
@@ -90,11 +93,26 @@ timer_elapsed (int64_t then)
 void
 timer_sleep (int64_t ticks) 
 {
-  int64_t start = timer_ticks ();
+  if (ticks <= 0) 
+    return;
 
+  int64_t start = timer_ticks ();
   ASSERT (intr_get_level () == INTR_ON);
-  while (timer_elapsed (start) < ticks) 
-    thread_yield ();
+
+  /* Disable interrupts so we aren't preempted while modifying lists */
+  enum intr_level old_level = intr_disable ();
+
+  struct thread *curr = thread_current ();
+  
+  /* Calculate and save the wake up time */
+  curr->wake_time = start + ticks;
+
+  /* Add to sleep list and block the thread */
+  list_push_back (&sleep_list, &curr->elem);
+  thread_block ();
+
+  /* Re-enable interrupts */
+  intr_set_level (old_level);
 }
 
 /* Sleeps for approximately MS milliseconds.  Interrupts must be
@@ -172,59 +190,28 @@ static void
 timer_interrupt (struct intr_frame *args UNUSED)
 {
   ticks++;
+  thread_tick ();
+
+  /* --- NEW WAKE UP LOGIC --- */
+  struct list_elem *e = list_begin (&sleep_list);
   
-  //Update only if multi-level feedback scheduler is enabled
-  if (thread_mlfqs){
-      struct thread *t = thread_current ();
+  while (e != list_end (&sleep_list)) 
+    {
+      struct thread *t = list_entry (e, struct thread, elem);
       
-      //Every 1 tick -> increment recent_cpu of running thread (not idle)
-      extern struct thread *idle_thread;
-      if (t != idle_thread){
-        t->recent_cpu = add_fixed_int(t->recent_cpu, 1);
-      }
-      //Every fourth tick -> recalculate priority for all threads
-      if (ticks % 4 == 0){
-          extern struct list all_list;
-          struct list_elem *e;
-          for (e = list_begin (&all_list); e != list_end (&all_list); e = list_next (e)){
-              struct thread *th = list_entry (e, struct thread, allelem);
-              // priority = PRI_MAX - (recent_cpu / 4) - (nice * 2)
-              int new_priority = 63 - convert_to_int_zero (div_fixed_int (th->recent_cpu, 4)) - (th->nice * 2);
-              
-              //Restrict priority to valid range
-              if (new_priority < 0)
-                new_priority = 0;
-              if (new_priority > 63)
-                new_priority = 63;
-              
-              th->priority = new_priority;
-            }
+      /* Has the wake up time arrived? */
+      if (ticks >= t->wake_time) 
+        {
+          /* Remove from sleep list and move to the next element safely */
+          e = list_remove (e);
+          /* Put back on the ready_list! */
+          thread_unblock (t);
         }
-      
-      //Every 1 sec (100 ticks) -> update load_avg and all threads recent_cpu
-      if (ticks % 100 == 0){
-          extern fixed_pt load_avg;
-          extern struct list ready_list;
-          /* Count ready threads (including running thread if not idle). */
-          int ready_threads = list_size (&ready_list);
-          struct thread *t = thread_current ();
-          if (t != idle_thread)
-            ready_threads++;
-          
-          // load_avg = (59/60)*load_avg + (1/60)*ready_threads
-          load_avg = add_fixed (mul_fixed (load_avg, div_fixed_int (convert_to_fixed (59), 60)), div_fixed_int (mul_fixed_int (convert_to_fixed (1), ready_threads), 60));
-          
-          // Update recent_cpu for all threads
-          struct list_elem *e;
-          for (e = list_begin (&all_list); e != list_end (&all_list); e = list_next (e)){
-              struct thread *th = list_entry (e, struct thread, allelem);
-              // recent_cpu = (2*load_avg)/(2*load_avg + 1) * recent_cpu + nice
-              fixed_pt x = div_fixed (mul_fixed_int (load_avg, 2), add_fixed_int (mul_fixed_int (load_avg, 2), 1));
-              th->recent_cpu = add_fixed_int (mul_fixed (x, th->recent_cpu),th->nice);
-            }
+      else 
+        {
+          e = list_next (e);
         }
     }
-  thread_tick ();
 }
 
 /* Returns true if LOOPS iterations waits for more than one timer

@@ -141,6 +141,56 @@ thread_tick (void)
   else
     kernel_ticks++;
 
+  int64_t ticks = timer_ticks ();
+
+//Update only if multi-level feedback scheduler is enabled
+  if (thread_mlfqs){
+      struct thread *t = thread_current ();
+      
+      //Every 1 tick -> increment recent_cpu of running thread (not idle)
+      if (t != idle_thread){
+        t->recent_cpu = add_fixed_int(t->recent_cpu, 1);
+      }
+      //Every fourth tick -> recalculate priority for all threads
+      if (ticks % 4 == 0){
+          struct list_elem *e;
+          for (e = list_begin (&all_list); e != list_end (&all_list); e = list_next (e)){
+              struct thread *th = list_entry (e, struct thread, allelem);
+              // priority = PRI_MAX - (recent_cpu / 4) - (nice * 2)
+              int new_priority = 63 - convert_to_int_zero (div_fixed_int (th->recent_cpu, 4)) - (th->nice * 2);
+              
+              //Restrict priority to valid range
+              if (new_priority < 0)
+                new_priority = 0;
+              if (new_priority > 63)
+                new_priority = 63;
+              
+              th->priority = new_priority;
+            }
+        }
+      
+      //Every 1 sec (100 ticks) -> update load_avg and all threads recent_cpu
+      if (ticks % 100 == 0){
+          /* Count ready threads (including running thread if not idle). */
+          int ready_threads = list_size (&ready_list);
+          struct thread *t = thread_current ();
+          if (t != idle_thread)
+            ready_threads++;
+          
+          // load_avg = (59/60)*load_avg + (1/60)*ready_threads
+          load_avg = add_fixed (mul_fixed (load_avg, div_fixed_int (convert_to_fixed (59), 60)), div_fixed_int (mul_fixed_int (convert_to_fixed (1), ready_threads), 60));
+          
+          // Update recent_cpu for all threads
+          struct list_elem *e;
+          for (e = list_begin (&all_list); e != list_end (&all_list); e = list_next (e)){
+              struct thread *th = list_entry (e, struct thread, allelem);
+              // recent_cpu = (2*load_avg)/(2*load_avg + 1) * recent_cpu + nice
+              fixed_pt x = div_fixed (mul_fixed_int (load_avg, 2), add_fixed_int (mul_fixed_int (load_avg, 2), 1));
+              th->recent_cpu = add_fixed_int (mul_fixed (x, th->recent_cpu),th->nice);
+            }
+        }
+    }
+
   /* Enforce preemption. */
   if (++thread_ticks >= TIME_SLICE)
     intr_yield_on_return ();
@@ -353,7 +403,12 @@ struct list_less_func *less_locks2(struct list_elem *a,struct list_elem *b, void
 void
 thread_set_priority (int new_priority) 
 {
-    thread_current ()->priority = new_priority;
+
+  if(thread_mlfqs){
+    return;
+   }
+
+  thread_current ()->priority = new_priority;
   
   if (!list_empty(&thread_current()->locks)) {
     struct list_elem *e = list_max(&thread_current()->locks, &less_locks2, NULL);
@@ -498,6 +553,7 @@ init_thread (struct thread *t, const char *name, int priority)
   list_init (&t->locks);
   t->waiting_lock=NULL;
   t->initial_priority = priority;//zodna dy 
+  t->wake_time = 0;
   t->magic = THREAD_MAGIC;
 
   old_level = intr_disable ();

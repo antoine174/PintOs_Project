@@ -203,47 +203,50 @@ lock_init (struct lock *lock)
    interrupts disabled, but interrupts will be turned back on if
    we need to sleep. */
 void
-lock_acquire (struct lock *lock){  
+lock_acquire (struct lock *lock)
+{  
   ASSERT (lock != NULL);
   ASSERT (!intr_context ());
   ASSERT (!lock_held_by_current_thread (lock));
 
-  if (lock->holder != NULL) 
+  if (!thread_mlfqs) 
     {
-      thread_current()->waiting_lock = lock;
-
-      struct lock *chain_lock = lock;
-      int depth = 10; 
-
-      while (chain_lock != NULL && chain_lock->holder != NULL && --depth)
+      if (lock->holder != NULL) 
         {
-          struct thread *holder = chain_lock->holder;
+          thread_current()->waiting_lock = lock;
 
-          if (chain_lock->priority < thread_current()->priority) 
+          struct lock *chain_lock = lock;
+          int depth = 8; 
+
+          while (chain_lock != NULL && chain_lock->holder != NULL && depth-- > 0)
             {
-              chain_lock->priority = thread_current()->priority;
-            }
+              struct thread *holder = chain_lock->holder;
 
-          if (holder->priority < thread_current()->priority) 
-            {
-              holder->priority = thread_current()->priority;
-            }
+              if (chain_lock->priority < thread_current()->priority) 
+                  chain_lock->priority = thread_current()->priority;
 
-          chain_lock = holder->waiting_lock;
+              if (holder->priority < thread_current()->priority) 
+                  holder->priority = thread_current()->priority;
+
+              chain_lock = holder->waiting_lock;
+            }
         }
     }
-  
-  sema_down (&lock->semaphore);
-  list_push_back(&thread_current()->locks,&lock->elem);
-  lock->holder = thread_current ();
-  
-  if(thread_current()->priority < lock->priority){
-    thread_current()->priority = lock->priority;
-  }
-   if(lock->holder -> priority < thread_current()-> priority){
-    lock->holder -> priority = thread_current()-> priority;
-   }
 
+  sema_down (&lock->semaphore);
+
+  if (!thread_mlfqs) 
+    {
+      thread_current()->waiting_lock = NULL; 
+      list_push_back(&thread_current()->locks, &lock->elem);
+
+      if (thread_current()->priority < lock->priority) 
+        {
+          thread_current()->priority = lock->priority;
+        }
+    }
+
+  lock->holder = thread_current ();
 }
 
 // void
@@ -294,6 +297,7 @@ lock_release (struct lock *lock)
   ASSERT (lock != NULL);
   ASSERT (lock_held_by_current_thread (lock));
 
+  if(!thread_mlfqs){
 
   list_remove(&lock->elem);
   lock->priority=0;
@@ -310,8 +314,9 @@ lock_release (struct lock *lock)
     }
   }
 
-
+  }
   lock->holder = NULL;
+
   sema_up (&lock->semaphore);
   thread_yield();
 }
