@@ -90,28 +90,27 @@ timer_elapsed (int64_t then)
 
 /* Sleeps for approximately TICKS timer ticks.  Interrupts must
    be turned on. */
+  struct list_less_func *less_time(struct list_elem *a,struct list_elem *b, void *aux){
+   struct thread *t1=list_entry(a,struct thread ,elem);
+  struct thread *t2=list_entry(b,struct thread ,elem);;
+  return t1->wake_time<t2->wake_time;
+}
 void
 timer_sleep (int64_t ticks) 
 {
-  if (ticks <= 0) 
+  if (ticks <= 0){ 
     return;
+  }
 
-  int64_t start = timer_ticks ();
   ASSERT (intr_get_level () == INTR_ON);
-
-  /* Disable interrupts so we aren't preempted while modifying lists */
-  enum intr_level old_level = intr_disable ();
-
-  struct thread *curr = thread_current ();
+  int64_t start = timer_ticks();
+  enum intr_level old_level = intr_disable();
   
-  /* Calculate and save the wake up time */
-  curr->wake_time = start + ticks;
+  thread_current()->wake_time = start+ticks;
 
-  /* Add to sleep list and block the thread */
-  list_push_back (&sleep_list, &curr->elem);
-  thread_block ();
+  list_insert_ordered(&sleep_list, &thread_current()->elem, &less_time, NULL);
+  thread_block();
 
-  /* Re-enable interrupts */
   intr_set_level (old_level);
 }
 
@@ -192,24 +191,19 @@ timer_interrupt (struct intr_frame *args UNUSED)
   ticks++;
   thread_tick ();
 
-  /* --- NEW WAKE UP LOGIC --- */
   struct list_elem *e = list_begin (&sleep_list);
   
   while (e != list_end (&sleep_list)) 
     {
       struct thread *t = list_entry (e, struct thread, elem);
-      
-      /* Has the wake up time arrived? */
       if (ticks >= t->wake_time) 
         {
-          /* Remove from sleep list and move to the next element safely */
           e = list_remove (e);
-          /* Put back on the ready_list! */
           thread_unblock (t);
         }
       else 
         {
-          e = list_next (e);
+          break;
         }
     }
 }
