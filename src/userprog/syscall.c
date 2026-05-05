@@ -7,7 +7,7 @@
 #include "filesys/file.h"
 #include "devices/input.h" // Needed for input_getc()
 #include "lib/user/syscall.h"
-
+#include "threads/vaddr.h"
 
 struct lock filesys_lock;
 
@@ -22,7 +22,9 @@ void syscall_init(void)
 static void
 syscall_handler(struct intr_frame *f UNUSED)
 {
-  printf("system call!\n");
+  if (f->esp == NULL || !is_user_vaddr(f->esp)) {
+      exit(-1); 
+  }
   int *args = (int *)f->esp;
   int sys_call_type = args[0];
   if (sys_call_type == SYS_HALT)
@@ -38,6 +40,9 @@ syscall_handler(struct intr_frame *f UNUSED)
   else if (sys_call_type == SYS_EXEC)
   {
     char *cmd_line = (char *)args[1];
+    if (cmd_line == NULL || !is_user_vaddr(cmd_line)) {
+        exit(-1);
+    }
     f->eax = exec(cmd_line);
   }
 
@@ -51,9 +56,8 @@ syscall_handler(struct intr_frame *f UNUSED)
   {
     char *file = (char *)args[1];
     unsigned intial_size = (unsigned)args[2];
-    if (file == NULL)
-    {
-      exit(-1);
+    if (file == NULL || !is_user_vaddr(file)) {
+        exit(-1);
     }
 
     f->eax = sys_create(file, intial_size);
@@ -62,9 +66,8 @@ syscall_handler(struct intr_frame *f UNUSED)
   else if (sys_call_type == SYS_REMOVE)
   {
     char *file = (char *)args[1];
-    if (file == NULL)
-    {
-      exit(-1);
+   if (file == NULL || !is_user_vaddr(file)) {
+        exit(-1);
     }
       f->eax = sys_remove(file);
     }
@@ -72,9 +75,8 @@ syscall_handler(struct intr_frame *f UNUSED)
   else if (sys_call_type == SYS_OPEN)
   {
     char *file = (char *)args[1];
-    if (file == NULL)
-    {
-      exit(-1);
+   if (file == NULL || !is_user_vaddr(file)) {
+        exit(-1);
     }
     f->eax = sys_open(file);
   }
@@ -90,7 +92,7 @@ syscall_handler(struct intr_frame *f UNUSED)
     int fd = args[1];
     void *buffer = (void *)args[2];
     unsigned size = (unsigned)args[3];
-    if (buffer == NULL)
+    if (buffer == NULL || !is_user_vaddr(buffer))
     {
       exit(-1);
     }
@@ -121,7 +123,7 @@ syscall_handler(struct intr_frame *f UNUSED)
     int fd = args[1];
     void *buffer = (void *)args[2];
     unsigned size = (unsigned)args[3];
-    if (buffer == NULL)
+   if (buffer == NULL || !is_user_vaddr(buffer))
     {
       exit(-1);
     }
@@ -174,8 +176,7 @@ void halt()
   shutdown_power_off();
 }
 
-pid_t exec(int status)
-{
+pid_t exec(const char *cmd_line){
   // TODO
 }
 
