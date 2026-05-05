@@ -2,18 +2,19 @@
 #define USERPROG_SYSCALL_H
 
 #include <stdbool.h>
+#include "threads/synch.h"
 
-struct lock filesys_lock;
+extern struct lock filesys_lock;
 
 void syscall_init (void);
-bool file_create (const char *file, unsigned initial_size);
-bool file_remove (const char *file);
-struct file *file_open (const char *file);
-int file_filesize (struct file *fd);   
-int file_read (struct file *fd, void *buffer, unsigned size);
-int file_write (struct file *fd, const void *buffer, unsigned size);
-void file_seek (struct file *fd, unsigned position);
-unsigned file_tell (struct file *fd);
-void file_close (struct file *fd);
+bool sys_create (const char *file, unsigned initial_size);
+bool sys_remove (const char *file);
+int sys_open (const char *file);                       // Returns int fd
+int sys_filesize (int fd);                             // Takes int fd
+int sys_read (int fd, void *buffer, unsigned size);    // Takes int fd
+int sys_write (int fd, const void *buffer, unsigned size); // Takes int fd
+void sys_seek (int fd, unsigned position);             // Takes int fd
+unsigned sys_tell (int fd);                            // Takes int fd
+void sys_close (int fd);                               // Takes int fd
 
 #endif /* userprog/syscall.h */

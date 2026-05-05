@@ -478,6 +478,14 @@ init_thread (struct thread *t, const char *name, int priority)
 	t->priority = priority;
 	t->magic = THREAD_MAGIC;
 
+	#ifdef USERPROG                           //NEW FOR FILES
+    for (int i = 0; i < 128; i++) {       //NEW FOR FILES
+        t->fd_table[i] = NULL;            //NEW FOR FILES
+    }                                     //NEW FOR FILES
+    t->fd_next = 2;                       //NEW FOR FILES
+    t->exec_file = NULL;                  //NEW FOR FILES
+	#endif                                    //NEW FOR FILES
+
 	old_level = intr_disable ();
 	list_push_back (&all_list, &t->allelem);
 	intr_set_level (old_level);
