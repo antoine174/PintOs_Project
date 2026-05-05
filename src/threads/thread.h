@@ -4,7 +4,7 @@
 #include <debug.h>
 #include <list.h>
 #include <stdint.h>
-#include "threads/fixed-point.h"
+#include "threads/synch.h"
 
 /* States in a thread's life cycle. */
 enum thread_status
@@ -87,26 +87,29 @@ struct thread
     tid_t tid;                          /* Thread identifier. */
     enum thread_status status;          /* Thread state. */
     char name[16];                      /* Name (for debugging purposes). */
-    uint8_t *stack;                     /* Saved stack pointer. */
+    uint8_t stack;                     /* Saved stack pointer. */
     int priority;                       /* Priority. */
-    int nice;                           /* Nice value for MLFQS [-20, 20]. */
-    fixed_pt recent_cpu;                /* Recent CPU time in fixed-point. */
     struct list_elem allelem;           /* List element for all threads list. */
 
     /* Shared between thread.c and synch.c. */
     struct list_elem elem;              /* List element. */
-    struct list locks;
-    int initial_priority;
-    struct lock *waiting_lock; 
-    int64_t wake_time;
-
+    struct list children_status;
+    struct thread *parent;
 #ifdef USERPROG
     /* Owned by userprog/process.c. */
-    uint32_t *pagedir;                  /* Page directory. */
+    uint32_t pagedir;                  /* Page directory. */
 #endif
 
     /* Owned by thread.c. */
     unsigned magic;                     /* Detects stack overflow. */
+  };
+
+  // edited
+  struct child_status{
+   tid_t tid;
+   bool load_status;
+   struct semaphore sema_load;
+   struct list_elem elem;
   };
 
 /* If false (default), use round-robin scheduler.

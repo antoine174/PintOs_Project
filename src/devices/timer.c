@@ -7,9 +7,6 @@
 #include "threads/interrupt.h"
 #include "threads/synch.h"
 #include "threads/thread.h"
-#include "threads/fixed-point.h"
-
-static struct list sleep_list;
   
 /* See [8254] for hardware details of the 8254 timer chip. */
 
@@ -38,7 +35,6 @@ static void real_time_delay (int64_t num, int32_t denom);
 void
 timer_init (void) 
 {
-  list_init (&sleep_list);
   pit_configure_channel (0, 2, TIMER_FREQ);
   intr_register_ext (0x20, timer_interrupt, "8254 Timer");
 }
@@ -90,28 +86,14 @@ timer_elapsed (int64_t then)
 
 /* Sleeps for approximately TICKS timer ticks.  Interrupts must
    be turned on. */
-  struct list_less_func *less_time(struct list_elem *a,struct list_elem *b, void *aux){
-   struct thread *t1=list_entry(a,struct thread ,elem);
-  struct thread *t2=list_entry(b,struct thread ,elem);;
-  return t1->wake_time<t2->wake_time;
-}
 void
 timer_sleep (int64_t ticks) 
 {
-  if (ticks <= 0){ 
-    return;
-  }
+  int64_t start = timer_ticks ();
 
   ASSERT (intr_get_level () == INTR_ON);
-  int64_t start = timer_ticks();
-  enum intr_level old_level = intr_disable();
-  
-  thread_current()->wake_time = start+ticks;
-
-  list_insert_ordered(&sleep_list, &thread_current()->elem, &less_time, NULL);
-  thread_block();
-
-  intr_set_level (old_level);
+  while (timer_elapsed (start) < ticks) 
+    thread_yield ();
 }
 
 /* Sleeps for approximately MS milliseconds.  Interrupts must be
@@ -190,22 +172,6 @@ timer_interrupt (struct intr_frame *args UNUSED)
 {
   ticks++;
   thread_tick ();
-
-  struct list_elem *e = list_begin (&sleep_list);
-  
-  while (e != list_end (&sleep_list)) 
-    {
-      struct thread *t = list_entry (e, struct thread, elem);
-      if (ticks >= t->wake_time) 
-        {
-          e = list_remove (e);
-          thread_unblock (t);
-        }
-      else 
-        {
-          break;
-        }
-    }
 }
 
 /* Returns true if LOOPS iterations waits for more than one timer
