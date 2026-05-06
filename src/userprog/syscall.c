@@ -5,11 +5,40 @@
 #include "threads/thread.h"
 #include "filesys/filesys.h"
 #include "filesys/file.h"
-#include "devices/input.h" // Needed for input_getc()
+#include "devices/input.h"
 #include "lib/user/syscall.h"
 #include "threads/vaddr.h"
+#include "userprog/pagedir.h"
 
 struct lock filesys_lock;
+
+
+
+static void check_valid_ptr (const void *vaddr) {
+    if (vaddr == NULL || !is_user_vaddr(vaddr)) {
+        exit(-1);
+    }
+    if (pagedir_get_page(thread_current()->pagedir, vaddr) == NULL) {
+        exit(-1);
+    }
+}
+
+static void check_valid_buffer (const void *buffer, unsigned size) {
+    char *ptr = (char *) buffer;
+    for (unsigned i = 0; i < size; i++) {
+        check_valid_ptr(ptr);
+        ptr++;
+    }
+}
+
+static void check_valid_string (const void *str) {
+    check_valid_ptr(str);
+    while (*((char *)str) != '\0') {
+        str = (char *)str + 1;
+        check_valid_ptr(str);
+    }
+}
+
 
 static void syscall_handler(struct intr_frame *);
 
@@ -22,9 +51,8 @@ void syscall_init(void)
 static void
 syscall_handler(struct intr_frame *f UNUSED)
 {
-  if (f->esp == NULL || !is_user_vaddr(f->esp)) {
-      exit(-1); 
-  }
+
+  check_valid_buffer(f->esp, 16);
   int *args = (int *)f->esp;
   int sys_call_type = args[0];
   if (sys_call_type == SYS_HALT)
@@ -40,9 +68,7 @@ syscall_handler(struct intr_frame *f UNUSED)
   else if (sys_call_type == SYS_EXEC)
   {
     char *cmd_line = (char *)args[1];
-    if (cmd_line == NULL || !is_user_vaddr(cmd_line)) {
-        exit(-1);
-    }
+    check_valid_string(cmd_line);
     f->eax = exec(cmd_line);
   }
 
@@ -56,9 +82,7 @@ syscall_handler(struct intr_frame *f UNUSED)
   {
     char *file = (char *)args[1];
     unsigned intial_size = (unsigned)args[2];
-    if (file == NULL || !is_user_vaddr(file)) {
-        exit(-1);
-    }
+    check_valid_string(file);
 
     f->eax = sys_create(file, intial_size);
   }
@@ -66,18 +90,14 @@ syscall_handler(struct intr_frame *f UNUSED)
   else if (sys_call_type == SYS_REMOVE)
   {
     char *file = (char *)args[1];
-   if (file == NULL || !is_user_vaddr(file)) {
-        exit(-1);
-    }
+    check_valid_string(file); 
       f->eax = sys_remove(file);
     }
 
   else if (sys_call_type == SYS_OPEN)
   {
     char *file = (char *)args[1];
-   if (file == NULL || !is_user_vaddr(file)) {
-        exit(-1);
-    }
+   check_valid_string(file);
     f->eax = sys_open(file);
   }
 
@@ -91,11 +111,8 @@ syscall_handler(struct intr_frame *f UNUSED)
   {
     int fd = args[1];
     void *buffer = (void *)args[2];
-    unsigned size = (unsigned)args[3];
-    if (buffer == NULL || !is_user_vaddr(buffer))
-    {
-      exit(-1);
-    }
+    unsigned size = (unsigned)args[3];    
+    check_valid_buffer(buffer, size);
     if (fd == 0)
     {
       // hndlt STDIN
@@ -123,10 +140,7 @@ syscall_handler(struct intr_frame *f UNUSED)
     int fd = args[1];
     void *buffer = (void *)args[2];
     unsigned size = (unsigned)args[3];
-   if (buffer == NULL || !is_user_vaddr(buffer))
-    {
-      exit(-1);
-    }
+    check_valid_buffer(buffer, size);
     if (fd == 1)
     {
       // hndlt STDout
@@ -168,7 +182,9 @@ syscall_handler(struct intr_frame *f UNUSED)
 
 void exit(int status)
 {
-  // TODO
+  struct thread *t = thread_current();
+  t->exit_status = status;
+  thread_exit();
 }
 
 void halt()
@@ -231,21 +247,19 @@ int sys_open(const char *file)
 
   struct thread *t = thread_current();
 
-  //check if we have room in the FD table
-  if (t->fd_next >= 128)
-  {
-    lock_acquire(&filesys_lock);
-    file_close(f);
-    lock_release(&filesys_lock);
-    return -1;
+  // Find an empty slot in the FD table starting from 2
+  for (int i = 2; i < 128; i++) {
+      if (t->fd_table[i] == NULL) {
+          t->fd_table[i] = f;
+          return i; // Return the found index as the FD
+      }
   }
 
-  // save the file in the table and return the FD
-  int fd = t->fd_next;
-  t->fd_table[fd] = f;
-  t->fd_next++;
-
-  return fd;
+  // If we get here, the table is full
+  lock_acquire(&filesys_lock);
+  file_close(f);
+  lock_release(&filesys_lock);
+  return -1;
 }
 
 int sys_filesize(int fd)

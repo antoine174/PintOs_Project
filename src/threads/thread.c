@@ -467,11 +467,13 @@ init_thread (struct thread *t, const char *name, int priority)
 
 	memset (t, 0, sizeof *t);
   	list_init(&t->children_status);
+		list_init(&t->locks);
 	if(t!= initial_thread){
 		t->parent = thread_current();
 	}else {
 		t->parent = NULL;
 	}
+	t->exit_status = -1;
 	t->status = THREAD_BLOCKED;
 	strlcpy (t->name, name, sizeof t->name);
 	t->stack = (uint8_t *) t + PGSIZE;

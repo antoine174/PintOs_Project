@@ -25,6 +25,15 @@ static void push_stack(int order, void **esp, char *token, char **argv, int argc
 static thread_func start_process NO_RETURN;
 static bool load (const char *cmdline, void (**eip) (void), void **esp, char** save_ptr);
 
+
+
+static void orphan_children (struct thread *t, void *aux) {
+    struct thread *dying_parent = (struct thread *) aux;
+    if (t->parent == dying_parent) {
+        t->parent = NULL;
+    }
+}
+
 /* Starts a new thread running a user program loaded from
    FILENAME.  The new thread may be scheduled (and may even exit)
    before process_execute() returns.  Returns the new process's
@@ -43,8 +52,10 @@ process_execute (const char *file_name)
 	strlcpy (fn_copy, file_name, PGSIZE);
 
 	/* Parsed file name */
+	char thread_name[16];
+	strlcpy(thread_name, fn_copy, sizeof thread_name);
 	char *save_ptr;
-	file_name = strtok_r((char *) file_name, " ", &save_ptr);
+	char *parsed_name = strtok_r(thread_name, " ", &save_ptr);
 
 	struct child_status *child = malloc(sizeof(struct child_status));
 	child->load_status = false;      
@@ -56,7 +67,7 @@ process_execute (const char *file_name)
 	list_push_back(&thread_current()->children_status, &child->elem);
 
 	/* Create a new thread to execute FILE_NAME. */
-	tid = thread_create (file_name, PRI_DEFAULT, start_process, fn_copy);
+	tid = thread_create (parsed_name, PRI_DEFAULT, start_process, fn_copy);
 
 	if (tid == TID_ERROR) {
 		palloc_free_page (fn_copy);
@@ -117,22 +128,23 @@ start_process (void *file_name_)
 	if_.gs = if_.fs = if_.es = if_.ds = if_.ss = SEL_UDSEG;
 	if_.cs = SEL_UCSEG;
 	if_.eflags = FLAG_IF | FLAG_MBS;
+	lock_acquire(&filesys_lock);
 	success = load (file_name, &if_.eip, &if_.esp, &save_ptr);
+	lock_release(&filesys_lock);
 
 	struct child_status *child = NULL;
 	struct list_elem *e;
 
-		for (e = list_begin (&thread_current()->parent->children_status); e != list_end (&thread_current()->parent->children_status);
-					e = list_next (e))
-				{
-					struct child_status *f = list_entry (e, struct child_status, elem);
-					if(f->tid == thread_current()->tid){
-		child = f;
-		break;
+	for (e = list_begin(&thread_current()->parent->children_status); e != list_end(&thread_current()->parent->children_status); e = list_next(e))
+	{
+		struct child_status *f = list_entry(e, struct child_status, elem);
+		if (f->tid == thread_current()->tid)
+		{
+			child = f;
+			break;
 		}
 	}
-	
-	
+
 	 if(child != NULL){
 		child->load_status = success;
 	 	sema_up(&child->sema_load);
@@ -185,9 +197,10 @@ process_wait (tid_t child_tid UNUSED)
 	if(child->waited_exit){
 		return -1;
 	}
+
+	child->waited_exit = true;
 	sema_down(&child->sema_exit);
 	int exit_status = child->exit_status;
-	child->waited_exit = true;
 	return exit_status;
 }
 
@@ -233,6 +246,7 @@ process_exit (void)
 		pagedir_destroy (pd);
 	}
 }
+
 
 /* Sets up the CPU for running user code in the current
    thread.
