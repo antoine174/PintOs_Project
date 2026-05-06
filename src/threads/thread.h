@@ -99,9 +99,9 @@ struct thread
     /* Owned by userprog/process.c. */
     uint32_t pagedir;                  /* Page directory. */
 
-   struct file *fd_table[128];         //NEW FOR FILES
-    int fd_next;                        //NEW FOR FILES
-    struct file *exec_file;             //NEW FOR FILES
+   struct file *fd_table[128];         
+    int fd_next;                        
+    struct file *exec_file;             
 #endif
 
     /* Owned by thread.c. */

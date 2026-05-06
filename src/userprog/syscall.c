@@ -185,19 +185,17 @@ int wait(pid_t pid)
   // TODO
 }
 
-/* --- HELPER FUNCTION: Convert FD to struct file * --- */
+//  convert fd to struct file //
 static struct file *get_file_from_fd(int fd)
 {
   struct thread *t = thread_current();
 
-  // Safety check: 0 and 1 are not valid file pointers, and array limit is 128
   if (fd < 2 || fd >= 128)
   {
     return NULL;
   }
   return t->fd_table[fd];
 }
-/* ---------------------------------------------------- */
 
 bool sys_create(const char *file, unsigned initial_size)
 {
@@ -233,7 +231,7 @@ int sys_open(const char *file)
 
   struct thread *t = thread_current();
 
-  // Check if we have room in the FD table
+  //check if we have room in the FD table
   if (t->fd_next >= 128)
   {
     lock_acquire(&filesys_lock);
@@ -242,7 +240,7 @@ int sys_open(const char *file)
     return -1;
   }
 
-  // Save the file in the table and return the FD
+  // save the file in the table and return the FD
   int fd = t->fd_next;
   t->fd_table[fd] = f;
   t->fd_next++;

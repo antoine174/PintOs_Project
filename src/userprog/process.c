@@ -173,6 +173,25 @@ process_exit (void)
 	struct thread *cur = thread_current ();
 	uint32_t *pd;
 
+    
+    // re-allow writes to the executable file
+    if (cur->exec_file != NULL) {
+        lock_acquire(&filesys_lock);
+        file_close(cur->exec_file);
+        lock_release(&filesys_lock);
+    }
+
+    //loop through the FD table and close any open
+    for (int i = 2; i < 128; i++) {
+        if (cur->fd_table[i] != NULL) {
+            lock_acquire(&filesys_lock);
+            file_close(cur->fd_table[i]);
+            lock_release(&filesys_lock);
+            cur->fd_table[i] = NULL; // Clear the ticket
+        }
+    }
+    // ---------------------------------------------------------
+
 	/* Destroy the current process's page directory and switch back
      to the kernel-only page directory. */
 	pd = cur->pagedir;
@@ -387,9 +406,13 @@ load (const char *file_name, void (**eip) (void), void **esp, char **save_ptr)
 
 	success = true;
 
+	// save the executable file 
+    t->exec_file = file;
+
 	done:
 	/* We arrive here whether the load is successful or not. */
-	file_close (file);
+	if(!success)
+		file_close (file);
 	return success;
 }
 
