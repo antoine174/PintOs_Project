@@ -466,7 +466,7 @@ init_thread (struct thread *t, const char *name, int priority)
 	ASSERT (name != NULL);
 
 	memset (t, 0, sizeof *t);
-  list_init(&t->children_status);
+  	list_init(&t->children_status);
 	if(t!= initial_thread){
 		t->parent = thread_current();
 	}else {
@@ -477,14 +477,12 @@ init_thread (struct thread *t, const char *name, int priority)
 	t->stack = (uint8_t *) t + PGSIZE;
 	t->priority = priority;
 	t->magic = THREAD_MAGIC;
-
-	#ifdef USERPROG                          
+         
     for (int i = 0; i < 128; i++) {       
         t->fd_table[i] = NULL;            
     }                                     
     t->fd_next = 2;                       
-    t->exec_file = NULL;                  
-	#endif                                    
+    t->exec_file = NULL;                                                  
 
 	old_level = intr_disable ();
 	list_push_back (&all_list, &t->allelem);

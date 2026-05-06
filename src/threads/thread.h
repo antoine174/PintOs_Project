@@ -95,13 +95,15 @@ struct thread
     struct list_elem elem;              /* List element. */
     struct list children_status;
     struct thread *parent;
+
+    struct file *fd_table[128];         
+    int fd_next;                        
+    struct file *exec_file;   
+
 #ifdef USERPROG
     /* Owned by userprog/process.c. */
     uint32_t pagedir;                  /* Page directory. */
-
-   struct file *fd_table[128];         
-    int fd_next;                        
-    struct file *exec_file;             
+       
 #endif
 
     /* Owned by thread.c. */
@@ -112,7 +114,10 @@ struct thread
   struct child_status{
    tid_t tid;
    bool load_status;
+   int exit_status;
+   bool waited_exit;
    struct semaphore sema_load;
+   struct semaphore sema_exit;
    struct list_elem elem;
   };
 

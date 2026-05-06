@@ -17,6 +17,7 @@
 #include "threads/palloc.h"
 #include "threads/thread.h"
 #include "threads/vaddr.h"
+#include "userprog/syscall.h"
 
 /* Used for setup_stack */
 static void push_stack(int order, void **esp, char *token, char **argv, int argc);
@@ -47,8 +48,10 @@ process_execute (const char *file_name)
 
 	struct child_status *child = malloc(sizeof(struct child_status));
 	child->load_status = false;      
-	sema_init(&child->sema_load, 0);  
-	//sema_init(&child->sema_exit, 0);  // Initialize the exit semaphore (for wait)
+	child->waited_exit = false;
+	child->exit_status = -1;
+	sema_init(&child->sema_load, 0);  //Initialize the load semaphore (for exec)
+	sema_init(&child->sema_exit, 0);  //Initialize the exit semaphore (for wait)
 		
 	list_push_back(&thread_current()->children_status, &child->elem);
 
@@ -163,7 +166,29 @@ start_process (void *file_name_)
 int
 process_wait (tid_t child_tid UNUSED) 
 {
-	return -1;
+	if(child_tid == TID_ERROR){
+		return -1;
+	}
+	struct child_status *child = NULL;
+	struct list_elem *e;
+
+	for (e = list_begin (&thread_current()->children_status); e != list_end (&thread_current()->children_status);e = list_next (e)){
+					struct child_status *f = list_entry (e, struct child_status, elem);
+					if(f->tid == child_tid){
+						child = f;
+						break;
+					}
+	}
+	if(child == NULL){
+		return -1;
+	}
+	if(child->waited_exit){
+		return -1;
+	}
+	sema_down(&child->sema_exit);
+	int exit_status = child->exit_status;
+	child->waited_exit = true;
+	return exit_status;
 }
 
 /* Free the current process's resources. */
@@ -187,10 +212,9 @@ process_exit (void)
             lock_acquire(&filesys_lock);
             file_close(cur->fd_table[i]);
             lock_release(&filesys_lock);
-            cur->fd_table[i] = NULL; // Clear the ticket
+            cur->fd_table[i] = NULL;
         }
     }
-    // ---------------------------------------------------------
 
 	/* Destroy the current process's page directory and switch back
      to the kernel-only page directory. */
