@@ -177,12 +177,12 @@ void halt()
 }
 
 pid_t exec(const char *cmd_line){
-  // TODO
+  return process_execute(cmd_line);
 }
 
 int wait(pid_t pid)
 {
-  // TODO
+  return process_wait(pid);
 }
 
 //  convert fd to struct file //
