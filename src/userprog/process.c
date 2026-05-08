@@ -224,6 +224,7 @@ void
 process_exit (void)
 {
 	struct thread *cur = thread_current ();
+	printf("%s: exit(%d)\n", cur->name, cur->exit_status);
 	uint32_t *pd;
 
     
@@ -252,15 +253,7 @@ process_exit (void)
 
         if (cs != NULL) {
             cs->exit_status = cur->exit_status;
-
-            if (cs->waited_exit) {
-                /* Parent is blocked waiting on us — wake it up */
-                sema_up (&cs->sema_exit);
-            } else {
-                /* Parent is not waiting — remove and free the record */
-                list_remove (&cs->elem);
-                free (cs);
-            }
+			sema_up (&cs->sema_exit);
         }
     }
 
@@ -269,14 +262,12 @@ process_exit (void)
     while (e != list_end (&cur->children_status)) {
         struct child_status *cs = list_entry (e, struct child_status, elem);
         e = list_next (e);
-        sema_up (&cs->sema_exit);
+        list_remove (&cs->elem);
+		free (cs);
     }
-
-    //Exit the thread
-    thread_exit ();
-  /*
+  
 	/* Destroy the current process's page directory and switch back
-     to the kernel-only page directory. 
+     to the kernel-only page directory. */
 	pd = cur->pagedir;
 	if (pd != NULL)
 	{
@@ -286,12 +277,12 @@ process_exit (void)
          process page directory.  We must activate the base page
          directory before destroying the process's page
          directory, or our active page directory will be one
-         that's been freed (and cleared). 
+         that's been freed (and cleared). */
 		cur->pagedir = NULL;
 		pagedir_activate (NULL);
 		pagedir_destroy (pd);
 	}
-  */
+  
 }
 
 
