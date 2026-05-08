@@ -201,6 +201,8 @@ process_wait (tid_t child_tid UNUSED)
 	child->waited_exit = true;
 	sema_down(&child->sema_exit);
 	int exit_status = child->exit_status;
+	list_remove(&child->elem);
+    free(child);
 	return exit_status;
 }
 // helper function to find child status by tid
@@ -257,14 +259,18 @@ process_exit (void)
         }
     }
 
-    //Unblock all children still waiting on this parent
+    //Unblock all children still waiting on this parent (implemented in process_wait)
+	//The parent removes his own child_status struct when it calls process_wait, so we don't need to worry about that here
+	thread_foreach(orphan_children, cur);
+	/*
     struct list_elem *e = list_begin (&cur->children_status);
     while (e != list_end (&cur->children_status)) {
         struct child_status *cs = list_entry (e, struct child_status, elem);
         e = list_next (e);
-        list_remove (&cs->elem);
-		free (cs);
+        //list_remove (&cs->elem);
+		//free (cs);
     }
+	*/
   
 	/* Destroy the current process's page directory and switch back
      to the kernel-only page directory. */
