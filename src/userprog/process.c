@@ -261,7 +261,6 @@ process_exit (void)
 
     //Unblock all children still waiting on this parent (implemented in process_wait)
 	//The parent removes his own child_status struct when it calls process_wait, so we don't need to worry about that here
-	thread_foreach(orphan_children, cur);
 	/*
     struct list_elem *e = list_begin (&cur->children_status);
     while (e != list_end (&cur->children_status)) {
