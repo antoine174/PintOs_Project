@@ -203,6 +203,21 @@ process_wait (tid_t child_tid UNUSED)
 	int exit_status = child->exit_status;
 	return exit_status;
 }
+// helper function to find child status by tid
+static struct child_status *
+find_child_status (struct thread *parent, tid_t tid)
+{
+    struct list_elem *e;
+    for (e = list_begin (&parent->children_status);
+         e != list_end (&parent->children_status);
+         e = list_next (e))
+    {
+        struct child_status *cs = list_entry (e, struct child_status, elem);
+        if (cs->tid == tid)
+            return cs;
+    }
+    return NULL;
+}
 
 /* Free the current process's resources. */
 void
@@ -229,8 +244,39 @@ process_exit (void)
         }
     }
 
+    //Update own child_status in parent's list
+    struct thread *parent = cur->parent;
+
+    if (parent != NULL) {
+        struct child_status *cs = find_child_status (parent, cur->tid);
+
+        if (cs != NULL) {
+            cs->exit_status = cur->exit_status;
+
+            if (cs->waited_exit) {
+                /* Parent is blocked waiting on us — wake it up */
+                sema_up (&cs->sema_exit);
+            } else {
+                /* Parent is not waiting — remove and free the record */
+                list_remove (&cs->elem);
+                free (cs);
+            }
+        }
+    }
+
+    //Unblock all children still waiting on this parent
+    struct list_elem *e = list_begin (&cur->children_status);
+    while (e != list_end (&cur->children_status)) {
+        struct child_status *cs = list_entry (e, struct child_status, elem);
+        e = list_next (e);
+        sema_up (&cs->sema_exit);
+    }
+
+    //Exit the thread
+    thread_exit ();
+  /*
 	/* Destroy the current process's page directory and switch back
-     to the kernel-only page directory. */
+     to the kernel-only page directory. 
 	pd = cur->pagedir;
 	if (pd != NULL)
 	{
@@ -240,11 +286,12 @@ process_exit (void)
          process page directory.  We must activate the base page
          directory before destroying the process's page
          directory, or our active page directory will be one
-         that's been freed (and cleared). */
+         that's been freed (and cleared). 
 		cur->pagedir = NULL;
 		pagedir_activate (NULL);
 		pagedir_destroy (pd);
 	}
+  */
 }
 
 
